@@ -1,0 +1,13 @@
+[project]
+name = "vm-bot"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "dotenv>=0.9.9",
+    "psutil==5.9.8",
+    "python-dateutil==2.8.2",
+    "pytz>=2025.2",
+    "schedule==1.2.1",
+]
