@@ -184,14 +184,9 @@ class VMMonitor:
         """Initiate system shutdown"""
         try:
             logging.info("Initiating system shutdown...")
-            if os.name == 'nt':  # Windows
-                subprocess.run(['shutdown', '/s', '/t', '60', '/c', "VM shutting down due to inactivity"])
-            else:  # Linux/Unix
-                # Use full path to shutdown command
-                subprocess.run(['/usr/sbin/shutdown', 'now'], check=True)
-                # If that fails, try poweroff
-                if os.path.exists('/home/ubuntu/logs/vm_monitor.log'):  # Only log if we can still write
-                    logging.info("Shutdown command executed successfully")
+            if os.path.exists('/home/ubuntu/logs/vm_monitor.log'):  # Only log if we can still write
+                logging.info("Shutdown command executed successfully")
+                subprocess.run(['sudo', 'poweroff'], check=True)
             return True
         except subprocess.CalledProcessError as e:
             logging.error(f"Failed to execute shutdown command: {e}")
