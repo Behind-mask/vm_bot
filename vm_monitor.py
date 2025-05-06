@@ -38,6 +38,8 @@ class VMMonitor:
         self.email_sent = False
         self.override_user = None
         self.override_time = None
+        self.warning_email_sent = False
+        self.shutdown_executed = False
         
         # Email configuration from .env file
         self.email_sender = os.getenv('VM_MONITOR_EMAIL')
@@ -114,34 +116,6 @@ class VMMonitor:
         now = datetime.datetime.now()
         return self.override_time.date() == now.date()
 
-    def get_active_users(self):
-        """Get list of active users on the system"""
-        try:
-            active_users = []
-            for user in psutil.users():
-                active_users.append({
-                    'username': user.name,
-                    'terminal': user.terminal,
-                    'host': user.host,
-                    'started': datetime.datetime.fromtimestamp(user.started)
-                })
-            return active_users
-        except Exception as e:
-            logging.error(f"Error getting active users: {e}")
-            return []
-
-    def check_system_activity(self):
-        """Check if there's any user activity on the system"""
-        active_users = self.get_active_users()
-        
-        # Consider system active if there are active users
-        if active_users:
-            self.last_activity_time = datetime.datetime.now()
-            if self.is_monitoring:
-                logging.info(f"System activity detected - Active users: {len(active_users)}")
-            return True
-        return False
-
     def should_start_monitoring(self):
         """Determine if monitoring should start (after 10:00 PM)"""
         current_time = datetime.datetime.now().time()
@@ -198,38 +172,42 @@ class VMMonitor:
     def run_monitor(self):
         """Main monitoring loop"""
         current_time = datetime.datetime.now().time()
-        
-        # Reset email_sent flag and override at the start of each day
+        # Reset flags and override at the start of each day
         if current_time < self.monitoring_start_time:
-            self.email_sent = False
+            self.warning_email_sent = False
+            self.shutdown_executed = False
             self.override_user = None
             self.override_time = None
             self.is_monitoring = False
             return
-        
         # Check for override first
         if self.check_override_validity():
-            if not self.email_sent:
+            if not self.warning_email_sent:
                 subject = "VM Shutdown Override Active"
                 body = f"VM automatic shutdown is disabled for today as {self.override_user} has requested manual control. They will shut down the VM manually."
                 self.send_email(subject, body)
-                self.email_sent = True
+                self.warning_email_sent = True
                 logging.info(f"Monitoring disabled for today due to override by {self.override_user}")
             return  # Skip all monitoring when override is active
-        
-        # Start monitoring only after 10:00 PM IST (16:30 UTC) if no override is in place
-        if not self.is_monitoring and self.should_start_monitoring():
-            self.is_monitoring = True
-            logging.info("Starting evening monitoring period... (10:00 PM IST / 16:30 UTC)")
-            self.last_activity_time = datetime.datetime.now()  # Reset activity timer
-        
-        # Only check activity and consider shutdown during monitoring period
-        if self.is_monitoring:
-            if not self.check_system_activity():
-                if self.should_shutdown():
-                    self.shutdown_system()
-            else:
-                logging.info("Activity detected, resetting shutdown timer...")
+        # Send warning email at warning_time
+        if current_time >= self.warning_time and not self.warning_email_sent:
+            subject = "VM Shutdown Warning"
+            body = ("The VM is scheduled to shut down at 10:30 PM IST (5:00 PM UTC) today.\n\n"
+                   "To prevent automatic shutdown and keep the VM running:\n"
+                   "1. SSH into the VM\n"
+                   "2. Run the following command:\n"
+                   "   cd ~/joval/vm_bot\n"
+                   "   python3 vm_override.py <your_name>\n\n"
+                   "Example: python3 vm_override.py john\n\n"
+                   "Note: Once you override, you will be responsible for manually shutting down the VM when you're done.")
+            self.send_email(subject, body)
+            self.warning_email_sent = True
+            logging.info("Warning email sent.")
+        # Shutdown at shutdown_time
+        if current_time >= self.shutdown_time and not self.shutdown_executed:
+            logging.info("Shutdown time reached. Initiating shutdown...")
+            self.shutdown_system()
+            self.shutdown_executed = True
 
 def main():
     monitor = VMMonitor()
